@@ -1,0 +1,9 @@
+# Byte-compiled / cache
+__pycache__/
+*.pyc
+
+# Downloaded sprite art cache -- these are official Pokemon images fetched
+# at runtime from a public sprite repository for personal fan-project use;
+# they shouldn't be redistributed via this repo. The game re-downloads them
+# on first run (and works fine offline via the procedural fallback if it can't).
+sprite_cache/

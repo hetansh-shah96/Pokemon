@@ -1,0 +1,5 @@
+# Standard pygame does not yet ship a prebuilt wheel for very new Python
+# versions (e.g. 3.14). pygame-ce is a drop-in, API-compatible replacement
+# (still `import pygame`) with up-to-date wheels. Either works if you already
+# have classic pygame >= 2.1 installed.
+pygame-ce>=2.5
