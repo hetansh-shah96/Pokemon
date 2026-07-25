@@ -11,6 +11,18 @@ folder. Note: plain `pygame` has no prebuilt wheel yet for very new Python
 versions (this machine runs 3.14) — `pygame-ce` was installed instead; it's
 a drop-in replacement (same `import pygame`).
 
+**Web build command (IMPORTANT, do not forget the flags):**
+```
+python -m pygbag --build --template web_template/pygbag.tmpl --width 1080 --height 720 .
+```
+Then commit the resulting `build/web/*`. **Gotcha discovered the hard way:**
+running `python -m pygbag .` (dev server, no `--build`) auto-rebuilds the
+site using *whatever flags you pass that invocation* -- run it without
+`--template`/`--width`/`--height` even once and it silently regenerates
+`build/web/` with pygbag's stock template and 1280x720 canvas, undoing the
+custom template. Always pass the same three flags, every time, build or
+serve.
+
 Project lives at `C:\Users\Parag Shah\OneDrive\Desktop\Pokemon` (moved here
 from a scratch folder partway through the build, at the user's request).
 Also pushed to `https://github.com/hetansh-shah96/Pokemon` (separate,
@@ -72,6 +84,48 @@ never changing desktop code paths.
   any code change with: `pip install pygbag` then
   `python -m pygbag --build .` from this folder, then commit the new
   `build/web/*`.
+
+## Update 2026-07-25 (fifth pass): fixed the live Vercel deploy's look
+
+User deployed to Vercel (pokemon-dexp.vercel.app) and reported it looked
+"squeezed in" with grey margins on all sides, plus an ugly stock green/blue
+"Ready to start" gate on load. Root-caused by reading pygbag's actual
+cached template (`build/web-cache/*.tmpl`) rather than guessing:
+
+- pygbag's default template centers the canvas in a box sized to a
+  **hardcoded `fb_ar: 1.77`** (16:9) aspect ratio, regardless of what your
+  actual game canvas looks like -- our game is 1080x720 = **1.5** aspect,
+  not 1.77. That mismatch was causing a *second*, redundant letterbox
+  layer on top of the first (pygbag's own box, sized wrong, nested inside
+  which our own `Game.present()` was correctly but pointlessly letterboxing
+  again) -- hence the "double margin, too squeezed" look.
+- The green/blue "Ready to start" box and greyish backdrop are pygbag's
+  literal placeholder defaults (`background: green; color: blue` in the
+  stock template) -- not a bug, just unstyled scaffolding nobody's meant to
+  ship as-is.
+
+Fix: `web_template/pygbag.tmpl` is now a **customized copy** of pygbag's
+default template (`--template web_template/pygbag.tmpl` flag, see build
+command above), with targeted changes only:
+- `fb_ar` corrected from `1.77` to `1.5` to match the real canvas.
+- Build now explicitly passed `--width 1080 --height 720` (was defaulting
+  to pygbag's own 1280x720) so the declared screen size matches too.
+- Body/html/canvas backgrounds recolored to the game's dark palette
+  (`#12160f`) instead of grey/powderblue, so any residual margin blends in
+  rather than clashing.
+- `#infobox` (the click-to-start gate) restyled dark-green/gold/monospace
+  to match the game instead of stock green/blue, and its message changed
+  to "POKEMON INDIGO LEAGUE -- Click or tap to start".
+- Deliberately did **not** force the canvas to `100vw/100vh` via
+  `!important` (considered it, backed off) -- that would have overridden
+  pygbag's own resize mechanism blindly, and without a real browser to
+  test in, risked *stretching/distorting* the image instead of fixing it.
+  The `fb_ar` correction is the well-understood, low-risk fix; if the
+  remaining margin still bothers you after this deploy, that forced-fill
+  approach is the next thing to try, but test it live, don't assume it.
+- `web_template/` is excluded from the actual app bundle via
+  `pygbag.ini`'s `ignoreDirs` (it's a build input for the HTML wrapper,
+  not Python app source).
 
 ### What was actually verified vs. not
 
