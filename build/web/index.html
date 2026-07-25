@@ -218,28 +218,21 @@ function show_infobox() {
         div.thick_border { border: 4px solid black; }
 
         /* the canvas *must not* have any border or padding, or mouse coords will be wrong */
-        /* Fill as much of the viewport as possible while preserving the
-           game's true 1080x720 (1.5) aspect ratio -- width/height push it
-           to fill the viewport, max-width/max-height (derived from the
-           *other* dimension via the fixed ratio) clamp it back before any
-           stretching/distortion can happen, so the largest box that fits
-           wins, centered, with letterboxing only where the ratio truly
-           requires it. */
         canvas.emscripten {
             border: 0px none;
             background-color: #12160f;
+            width: 100%;
+            height: 100%;
             z-index: 5;
-            padding: 0;
-            margin: 0;
 
-            position: absolute !important;
-            top: 50% !important;
-            left: 50% !important;
-            transform: translate(-50%, -50%) !important;
-            width: 100vw !important;
-            height: 100vh !important;
-            max-width: calc(100vh * 1.5) !important;
-            max-height: calc(100vw / 1.5) !important;
+            padding: 0;
+            margin: 0 auto;
+
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            left: 0;
+            right: 0;
         }
 
         body {
