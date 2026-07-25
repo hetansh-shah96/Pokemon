@@ -13,6 +13,97 @@ a drop-in replacement (same `import pygame`).
 
 Project lives at `C:\Users\Parag Shah\OneDrive\Desktop\Pokemon` (moved here
 from a scratch folder partway through the build, at the user's request).
+Also pushed to `https://github.com/hetansh-shah96/Pokemon` (separate,
+independent git repo scoped to just this folder -- the parent Desktop
+folder is itself a *different*, unrelated git repo for a family-tree
+project; do not run git commands here expecting them to touch that one).
+
+## Update 2026-07-25 (fourth pass): web build for Vercel via pygbag
+
+The user wanted this playable as a link (Vercel/Railway). Pygame can't run
+on either as a native desktop app -- there's no display attached to a
+serverless/container host. Chosen fix: **pygbag**, which compiles a Pygame
+project to WebAssembly so it runs in a browser `<canvas>`. The desktop
+build (`python main.py`) is fully preserved and behaves identically; the
+web path is additive, gated behind `sys.platform == "emscripten"` checks,
+never changing desktop code paths.
+
+- **`main.py`**: `Game.run()` is now `async def run()`, looping on
+  `self.running` (a flag, not `sys.exit()`) and calling
+  `await asyncio.sleep(0)` once per frame -- required so the browser's
+  single-threaded event loop gets a chance to breathe; harmless/invisible
+  on desktop. Entry point is now `asyncio.run(Game().run())`. The
+  `QUIT`-button and Escape-key handlers in the result screen now set
+  `self.running = False` instead of calling `pygame.quit(); sys.exit()`
+  (sys.exit() inside a coroutine is the wrong tool on any platform, not
+  just web).
+- **`theme.py`** `font()`: on desktop, unchanged (Consolas/Courier via
+  `pygame.font.match_font`). Under `sys.platform == "emscripten"`, loads a
+  bundled font file instead, since Windows system fonts don't exist in a
+  browser sandbox. Picked **VT323** (`fonts/VT323-Regular.ttf`, SIL OFL --
+  `fonts/OFL.txt` included) specifically because it measured *narrower*
+  than Consolas at every size tested (see this conversation's font-width
+  comparison against Space Mono, which measured wider and was rejected for
+  overflow risk against the game's many tightly-fit text areas). Sized up
+  ~15% (`_WEB_SIZE_BOOST`) since VT323 reads smaller per point than
+  Consolas even though it's narrower.
+- **`real_sprites.py`**: added `_web_fetch()`, an async function using
+  `pyodide.http.pyfetch` (there are no raw sockets in a browser -- `urllib`
+  cannot work there at all), scheduled via `asyncio.ensure_future()`
+  instead of `threading.Thread` (no real OS threads without
+  cross-origin-isolation, which this deploy doesn't assume). Gated by
+  `_IS_WEB = sys.platform == "emscripten"` in `request()`; the desktop
+  threading+urllib+disk-cache path is 100% unchanged and still primary/
+  best-tested. **No persistent disk cache on web** (pyodide's default
+  virtual filesystem doesn't survive a page reload) -- just an in-memory
+  cache for the session; the browser's own HTTP cache covers repeat plays.
+  Confirmed `raw.githubusercontent.com` sends `Access-Control-Allow-Origin: *`
+  so this fetch won't hit CORS problems from any hosting domain.
+- **`pygbag.ini`** (note: `.ini` extension despite TOML-ish syntax --
+  `.toml` is silently ignored, this cost real debugging time, don't rename
+  it): excludes `sprite_cache/`, `build/`, `.git/`, `__pycache__/` from
+  what pygbag bundles into the app package.
+- **`build/web/`** -- the actual built static site (`index.html`,
+  `pokemon.apk`, `pokemon.tar.gz`, `favicon.png`) is committed directly to
+  the repo on purpose, and IS tracked by git (only `build/web-cache/`,
+  pygbag's own local template-download cache, is ignored). This means
+  Vercel needs **no build step at all** -- see `vercel.json`
+  (`"buildCommand": false`, `outputDirectory: "build/web"`). Rebuild after
+  any code change with: `pip install pygbag` then
+  `python -m pygbag --build .` from this folder, then commit the new
+  `build/web/*`.
+
+### What was actually verified vs. not
+
+Verified, with real (not assumed) evidence:
+- Full desktop regression after the async refactor: headless multi-trial
+  playthroughs (draft->reroll->arena->battle->result) via direct handler
+  calls, **plus** a from-scratch integration test that drives the actual
+  `asyncio`-based `run()` loop through the real `pygame.event` queue with
+  correctly-transformed screen coordinates (a first attempt at this test
+  posted un-transformed logical coordinates and got a false-positive hang
+  on the forced-switch screen's narrow party-button rects -- the game
+  itself was fine, the test was buggy; fixed by converting logical->real
+  coordinates via `_present_scale`/`_present_offset` before posting, same
+  math as `Game.to_logical` in reverse).
+- `pygbag --build .` completes without error and produces a well-formed
+  `build/web/` (inspected `pokemon.apk`'s contents directly -- exactly the
+  9 expected project files/fonts, nothing extra).
+- The pygbag local dev server (`python -m pygbag .`, no `--build`) starts
+  and correctly serves `index.html` and `pokemon.apk` over HTTP (checked
+  via `curl`, matching content-lengths, correct CORS/COOP headers).
+
+**NOT verified** (no real browser available in this environment):
+- That the game actually boots and plays correctly once pyodide loads it
+  in a real browser tab. The async loop structure and `pyodide.http.pyfetch`
+  usage follow documented pygbag/pyodide conventions as closely as I could
+  confirm from pygbag's own installed source, but the WASM/JS runtime
+  interaction itself is untested live. **Before deploying to Vercel,
+  it's worth running `python -m pygbag .` locally and opening
+  `http://localhost:8000` in an actual browser first** to catch anything
+  that only shows up at runtime (font rendering, sprite fetch over
+  `pyfetch`, canvas sizing) -- that 5-minute check is cheap insurance
+  against debugging it for the first time on a live Vercel deploy.
 
 ## Status (last updated: 2026-07-25) — FEATURE-COMPLETE, PLAYTESTED
 

@@ -13,11 +13,17 @@ crashes waiting on the network.
 
 import io
 import os
+import sys
 import threading
 import urllib.error
 import urllib.request
 
 import pygame
+
+# Browsers (pygbag/pyodide) have no raw sockets and no real OS threads --
+# fetching there goes through the Fetch API via an asyncio task instead.
+# See _web_fetch()/request() below for the platform split.
+_IS_WEB = sys.platform == "emscripten"
 
 CACHE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "sprite_cache")
 
@@ -80,13 +86,45 @@ def _worker(dex):
             _pending.discard(dex)
 
 
+async def _web_fetch(dex):
+    """Browser build: fetch via the Fetch API (pyodide.http.pyfetch) since
+    there are no raw sockets or real OS threads inside the WASM sandbox.
+    In-memory only -- no persistent disk cache is attempted here, since a
+    plain pygbag build's virtual filesystem doesn't survive a page reload
+    anyway; the browser's own HTTP cache covers repeat plays well enough."""
+    try:
+        try:
+            from pyodide.http import pyfetch
+        except Exception:
+            return
+        for template in _SPRITE_URL_TEMPLATES:
+            try:
+                resp = await pyfetch(template.format(dex))
+                if resp.ok:
+                    data = await resp.bytes()
+                    with _lock:
+                        _bytes_cache[dex] = bytes(data) if data else False
+                    return
+            except Exception:
+                continue
+        with _lock:
+            _bytes_cache[dex] = False
+    finally:
+        with _lock:
+            _pending.discard(dex)
+
+
 def request(dex):
     """Kick off a background fetch for this dex number, if not already underway."""
     with _lock:
-        if dex in _bytes_cache or dex in _pending or _offline:
+        if dex in _bytes_cache or dex in _pending or (_offline and not _IS_WEB):
             return
         _pending.add(dex)
-    threading.Thread(target=_worker, args=(dex,), daemon=True).start()
+    if _IS_WEB:
+        import asyncio
+        asyncio.ensure_future(_web_fetch(dex))
+    else:
+        threading.Thread(target=_worker, args=(dex,), daemon=True).start()
 
 
 def _get_raw_surface(dex):

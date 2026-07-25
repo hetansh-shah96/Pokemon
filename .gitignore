@@ -7,3 +7,8 @@ __pycache__/
 # they shouldn't be redistributed via this repo. The game re-downloads them
 # on first run (and works fine offline via the procedural fallback if it can't).
 sprite_cache/
+
+# pygbag's own template/favicon download cache -- not part of the deployable
+# site, just its local build cache. build/web/ (the actual static site) IS
+# committed on purpose so Vercel can serve it with zero build step.
+build/web-cache/

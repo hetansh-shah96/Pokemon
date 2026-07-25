@@ -1,9 +1,19 @@
 """Shared look & feel: palette, fonts, and small drawing/UI helpers."""
 
+import os
+import sys
+
 import pygame
 
 WIDTH, HEIGHT = 1080, 720
 FPS = 60
+
+# Windows system fonts (Consolas/Courier) don't exist inside a browser
+# sandbox, so the pygbag/pyodide web build bundles its own font instead --
+# the desktop build is untouched and keeps using the system font lookup.
+_IS_WEB = sys.platform == "emscripten"
+_WEB_FONT_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fonts", "VT323-Regular.ttf")
+_WEB_SIZE_BOOST = 1.15  # VT323 renders noticeably smaller than Consolas at the same point size
 
 # -- palette: a muted, slightly-phosphor GBC-screen feel ---------------------
 BG = (18, 22, 19)
@@ -36,8 +46,14 @@ _FONT_CACHE = {}
 def font(size, bold=False, mono="consolas"):
     key = (size, bold, mono)
     if key not in _FONT_CACHE:
-        path = pygame.font.match_font(mono, bold=bold) or pygame.font.get_default_font()
-        _FONT_CACHE[key] = pygame.font.Font(path, size)
+        if _IS_WEB:
+            f = pygame.font.Font(_WEB_FONT_PATH, max(8, round(size * _WEB_SIZE_BOOST)))
+            if bold:
+                f.set_bold(True)
+        else:
+            path = pygame.font.match_font(mono, bold=bold) or pygame.font.get_default_font()
+            f = pygame.font.Font(path, size)
+        _FONT_CACHE[key] = f
     return _FONT_CACHE[key]
 
 

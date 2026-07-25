@@ -10,9 +10,9 @@ turn-based battle.
 Run:  python main.py
 """
 
+import asyncio
 import math
 import random
-import sys
 
 import pygame
 
@@ -66,6 +66,7 @@ class Game:
         self.state = "title"
         self.mouse_pos = (0, 0)
         self.hp_anim = {}   # id(BattleMon) -> displayed hp float, driven by the anim system
+        self.running = True
         self.now_ms = 0
         self.idle_t = 0.0
         self.blink_next = {"player": 0, "cpu": 0}   # next scheduled blink, ms
@@ -162,12 +163,16 @@ class Game:
         s = self._present_scale or 1.0
         return ((pos[0] - ox) / s, (pos[1] - oy) / s)
 
-    def run(self):
-        while True:
+    async def run(self):
+        # An async loop (yielding once a frame via asyncio.sleep(0)) runs
+        # identically under plain CPython and under pygbag/pyodide in the
+        # browser, which requires cooperative yielding -- a blocking
+        # `while True` loop would freeze the browser tab.
+        while self.running:
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
-                    pygame.quit()
-                    sys.exit()
+                    self.running = False
+                    break
                 elif event.type == pygame.VIDEORESIZE:
                     self.window = pygame.display.set_mode((event.w, event.h), pygame.RESIZABLE)
                     continue
@@ -177,10 +182,14 @@ class Game:
                     self.mouse_pos = event.pos
                 else:
                     self.handle_event(event)
+            if not self.running:
+                break
             self.update()
             self.draw()
             pygame.display.flip()
             self.clock.tick(FPS)
+            await asyncio.sleep(0)
+        pygame.quit()
 
     def handle_event(self, event):
         handler = getattr(self, f"handle_{self.state}", None)
@@ -938,15 +947,13 @@ class Game:
                 self.start_new_run()
                 self.state = "title"
             elif quit_btn.hit(event.pos):
-                pygame.quit()
-                sys.exit()
+                self.running = False
         elif event.type == pygame.KEYDOWN:
             if event.key == pygame.K_RETURN:
                 self.start_new_run()
                 self.state = "title"
             elif event.key == pygame.K_ESCAPE:
-                pygame.quit()
-                sys.exit()
+                self.running = False
 
     def draw_result(self):
         b = self.battle
@@ -971,4 +978,4 @@ class Game:
 
 
 if __name__ == "__main__":
-    Game().run()
+    asyncio.run(Game().run())
