@@ -5,7 +5,8 @@ import sys
 
 import pygame
 
-WIDTH, HEIGHT = 1080, 720
+WIDE_W, WIDE_H = 1080, 720      # landscape / desktop logical canvas
+NARROW_W, NARROW_H = 720, 1280  # portrait / phone logical canvas (9:16-ish)
 FPS = 60
 
 # Windows system fonts (Consolas/Courier) don't exist inside a browser

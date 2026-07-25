@@ -85,6 +85,85 @@ never changing desktop code paths.
   `python -m pygbag --build .` from this folder, then commit the new
   `build/web/*`.
 
+## Update 2026-07-26 (sixth pass): full responsive (mobile/portrait) redesign
+
+User chose a genuine portrait-native redesign over a "rotate your phone"
+stopgap. Implemented as a **dual logical canvas + per-screen dispatch**,
+approved via plan mode first (see the plan file this session referenced,
+or just read this section -- it captures the same design).
+
+- `theme.py`: `WIDE_W, WIDE_H = 1080, 720` (landscape, unchanged values)
+  and new `NARROW_W, NARROW_H = 720, 1280` (portrait, 9:16-ish).
+- `main.py` `Game`: `self.narrow` (bool), plus `W`/`H` properties
+  resolving to the narrow or wide constants. `_sync_canvas_mode()` (called
+  at the top of every `draw()`) recomputes `narrow` from
+  `self.window.get_size()` (`win_h > win_w`) and recreates `self.screen`
+  on any *change* -- this is what makes resizing the desktop window, or a
+  phone rotating, live-switch layouts, verified directly (resized a real
+  window from landscape to portrait and back, mid-run).
+  `present()`/`to_logical()` use `self.W`/`self.H` instead of the old bare
+  module constants.
+- **Key pattern that made this tractable**: `handle_builder`,
+  `handle_arena`, and `handle_battle` never needed to change at all --
+  they were already written to call layout-getter methods
+  (`builder_layout()`, `arena_tiles()`, `battle_menu_buttons()`,
+  `move_buttons()`, `party_buttons()`) rather than hardcoding coordinates
+  inline. So only those getters (plus the `draw_*` methods) needed
+  wide/narrow variants; every event handler stayed a single shared
+  implementation. If you extend this later, keep new screens following
+  that same discipline -- it's the whole reason this didn't turn into 2x
+  the event-handling code too.
+- Per screen:
+  - **Title, Result**: adapt via the `W`/`H` swap alone (already-
+    proportional math) -- no dispatcher needed.
+  - **Builder**: `builder_layout`/`team_slot_rects`/`builder_buttons`/
+    `draw_builder` each became a 1-line dispatcher to `_wide`/`_narrow`
+    siblings. Narrow: 2x5 card grid, team as a 6-icon horizontal strip,
+    Pokedex detail panel below (reuses `draw_detail_panel` completely
+    unchanged -- it was already parameterized by an arbitrary `rect`),
+    Reroll/Confirm stacked as two half-width buttons at the bottom.
+  - **Arena**: same dispatcher pattern. Narrow: 4 tiles stacked in one
+    column (landscape-shaped tiles: name/badge/share-count on the left,
+    blurb text to the right, rather than the wide version's centered
+    vertical stack) via a new shared `_draw_arena_roster_and_buttons()`
+    helper (auto-wraps the 6-icon roster into rows based on available
+    width, so it's correct in both modes without a size-specific fork).
+  - **Battle**: the biggest one. Extracted the action-menu *rendering*
+    (FIGHT/SWITCH/STATS, move list, party list, forced-switch prompt,
+    animating/winner overlays) into a shared `_draw_battle_action_panel
+    (menu_rect)` -- it only ever reads button rects through the
+    already-dispatching getters, so it needed zero mode-awareness itself.
+    Only the outer "scene" composition differs:
+    `draw_battle_wide`/`draw_battle_narrow` position the HUDs/sprites/log
+    panel differently (narrow: everything stacked vertically, CPU then
+    player then log, with the action panel pinned to the bottom ~300px
+    for thumb reach) and then both call the same
+    `_draw_battle_action_panel`. `draw_hud`, `draw_battler_sprite`, and
+    `draw_battle_stats` needed *no changes* -- already parameterized by
+    the caller-supplied rect/position, exactly like `draw_detail_panel`.
+
+### Verified
+
+- Full narrow-mode regression: draft (with compulsory reroll + slot-
+  machine animation) -> arena -> battle (forced switches, fainting,
+  animation skip) -> result, via direct handler calls, across multiple
+  seeded trials -- no crashes, no mis-registered clicks.
+- Full **wide**-mode regression re-run after the refactor (same style),
+  confirming zero behavior change to the desktop experience the user had
+  already approved.
+- Live resize test in a real (non-headless) window: started landscape,
+  resized to a portrait aspect mid-run, resized back -- `self.narrow`
+  and `self.screen`'s size flipped correctly both directions, no crash.
+- Headless screenshots of every narrow screen/sub-state (builder empty
+  and mid-pick, arena unselected and selected, battle root/fight/switch/
+  stats) -- checked visually for overlap and clipping, none found.
+- Rebuilt the pygbag web bundle (same command as before, see above) and
+  confirmed the packaged `.apk` contains the updated `main.py`/`theme.py`.
+- **Not verified**: an actual phone browser. Touch-to-mouse translation
+  under pygbag/emscripten should map taps to the same `MOUSEBUTTONDOWN`
+  handling already tested, but that's inference, not a live check --
+  ask the user to confirm on their own device after this deploys.
+
 ## Update 2026-07-25 (fifth pass): fixed the live Vercel deploy's look
 
 User deployed to Vercel (pokemon-dexp.vercel.app) and reported it looked
